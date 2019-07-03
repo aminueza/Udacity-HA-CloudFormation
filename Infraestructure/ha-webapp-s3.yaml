@@ -1,0 +1,45 @@
+---
+Description: >
+  Amanda Souza
+  CloudFormation file to create a S3 bucket for deploying a high-availability 
+  web app using CloudFormation.
+
+Parameters:
+  WebAppEnv:
+    Description: "An Enviroment name to tag resources"
+    ConstraintDescription: "Your env is invalid! Please, type an environment from the list"
+    Type: "String"
+    AllowedValues:
+      - "sandbox" #env to developers create and test web apps
+      - "staging" #env to pre-live web apps
+      - "production" #env to add web app to production
+
+S3WebApp:
+  Type: AWS::S3::Bucket
+  Properties:
+    AccessControl: PublicRead
+    WebsiteConfiguration:
+      IndexDocument: index.html
+      ErrorDocument: error.html
+  DeletionPolicy: Retain
+
+S3WebAppPolicy:
+  Type: AWS::S3::BucketPolicy
+  Properties:
+    Bucket: !
+      - Ref: S3WebApp
+    PolicyDocument:
+      Statement:
+        - Sid: AllowStaticObjectDownload
+          Action: s3:GetObject
+          Effect: "Allow"
+          Resource: !Join ["", ["arn:aws:s3:::", !Ref "S3WebApp", "/*"]]
+          Principal:
+            AWS: "*"
+Outputs:
+  WebsiteURL:
+    Value: !GetAtt [S3WebApp, WebsiteURL]
+    Description: URL for website hosted on S3
+  S3BucketSecureURL:
+    Value: !Join ["", ["https://", !GetAtt [S3WebApp, DomainName]]]
+    Description: Name of S3 bucket to hold website content

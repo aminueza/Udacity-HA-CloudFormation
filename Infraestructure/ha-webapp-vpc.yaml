@@ -1,0 +1,31 @@
+---
+Description: >
+  Amanda Souza
+  CloudFormation file to create VPC.
+
+Parameters:
+  WebAppEnv:
+    Description: An Enviroment name to tag resources
+    ConstraintDescription: Your env is invalid! Please, type an environment from the list
+    Type: String
+    Default: sandbox
+    AllowedValues:
+      - sandbox #env to developers create and test web apps
+      - staging #env to pre-live web apps
+      - production #env to add web app to production
+  WebAppAZOhio:
+    Description: An Availability Zone 1 to high avaliability
+    Type: String
+    ConstraintDescription: Your AZ is invalid! Please, type an enviro AZ from the list
+    Default: us-east-1a
+    AllowedValues:
+      - us-east-1a
+      - us-east-1b
+  WebAppAZFrankfurt:
+    Description: An Availability Zone 2 to high avaliability
+    Type: String
+    ConstraintDescription: Your AZ is invalid! Please, type an enviro AZ from the list
+    Default: eu-central-1a
+    AllowedValues:
+      - eu-central-1a
+      - eu-central-1b

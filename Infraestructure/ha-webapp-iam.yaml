@@ -1,0 +1,43 @@
+---
+Description: >
+  Amanda Souza
+  CloudFormation file to allow EC2 instances to manage Web App S3.
+
+Parameters:
+  WebAppEnv:
+    Description: "An Enviroment name to tag resources"
+    ConstraintDescription: "Your env is invalid! Please, type an environment from the list"
+    Type: "String"
+    AllowedValues:
+      - "sandbox" #env to developers create and test web apps
+      - "staging" #env to pre-live web apps
+      - "production" #env to add web app to production
+
+Resources:
+  IAMRoleWebApp:
+    Type: "AWS::IAM::Role"
+    Properties:
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+
+  IAMWebAppS3IP:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: "IAMRoleWebApp"
+
+Outputs:
+  IAMWebAppS3IP:
+    Description: "Allow EC2 instances to manage Web App S3"
+    Value: !Ref "IAMWebAppS3IP"

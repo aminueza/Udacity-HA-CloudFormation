@@ -1,0 +1,68 @@
+---
+Description: >
+  Amanda Souza
+  CloudFormation file to create EC2 instances.
+
+Parameters:
+  WebAppEnv:
+    Description: An Enviroment name to tag resources
+    ConstraintDescription: Your env is invalid! Please, type an environment from the list
+    Type: String
+    AllowedValues:
+      - sandbox #env to developers create and test web apps
+      - staging #env to pre-live web apps
+      - production #env to add web app to production
+
+  InstanceType:
+    Description: Web App EC2 instance type
+    Type: String
+    Default: t3.small
+    ConstraintDescription: Your EC2 type is invalid! Please, enter a valid EC2 instance from the list.
+    AllowedValues:
+      - t2.small
+      - t2.medium
+      - t3.small
+      - t3.medium
+
+  Mappings:
+    WebAppRegion:
+      eu-central-1:
+        HVM64: ami-090f10efc254eaf55
+      us-east-1:
+        HVM64: ami-0c55b159cbfafe1f0
+
+Resources:
+  WebAppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AvailabilityZone: !Sub ${WebAppAZOhio}a
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install unzip awscli -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          sudo rm /var/www/html/index.html
+          aws s3 cp s3://udacity-demo-1/udacity.zip /var/www/html
+          unzip -o /var/www/html/udacity.zip
+          sudo service apache2 restart
+      IamInstanceProfile:
+        - Ref: ProfileWithRolesForOurApp
+      SecurityGroups:
+        - Ref: WebServerSecGroup
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sdk"
+          Ebs:
+            VolumeSize: "10"
+            DeleteOnTermination: true
+            VolumeType: "gp2"
+      ImageId: !FindInMap [WebAppRegion, !Ref "AWS::Region", HVM64]
+      InstanceType:
+        - Ref: InstanceType
+      KeyName: "WebAppAZ"
+
+Outputs:
+  Website:
+    Description: The Public DNS for the EC2 Instance
+    Value: !Sub "http://${Ec2Instance.PublicDnsName}"
