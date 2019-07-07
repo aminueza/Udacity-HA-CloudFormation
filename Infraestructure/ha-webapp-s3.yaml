@@ -1,6 +1,6 @@
 ---
 Description: >
-  Amanda Souza
+  Amanda Souza / Udacity 2019
   CloudFormation file to create a S3 bucket for deploying a high-availability 
   web app using CloudFormation.
 
@@ -14,32 +14,59 @@ Parameters:
       - "staging" #env to pre-live web apps
       - "production" #env to add web app to production
 
-S3WebApp:
-  Type: AWS::S3::Bucket
-  Properties:
-    AccessControl: PublicRead
-    WebsiteConfiguration:
-      IndexDocument: index.html
-      ErrorDocument: error.html
-  DeletionPolicy: Retain
+Resources:
+  S3WebApp:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: udacity-udagram
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+    DeletionPolicy: Delete
 
-S3WebAppPolicy:
-  Type: AWS::S3::BucketPolicy
-  Properties:
-    Bucket: !
-      - Ref: S3WebApp
-    PolicyDocument:
-      Statement:
-        - Sid: AllowStaticObjectDownload
-          Action: s3:GetObject
-          Effect: "Allow"
-          Resource: !Join ["", ["arn:aws:s3:::", !Ref "S3WebApp", "/*"]]
-          Principal:
-            AWS: "*"
+  S3WebAppPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3WebApp
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: s3:*
+            Resource: !Join ["", ["arn:aws:s3:::", !Ref "S3WebApp", "/*"]]
+            Principal:
+              AWS: "*"
+
+  S3KeyPar:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: udagram-key
+      AccessControl: Private
+    DeletionPolicy: Retain
+
+  S3KeyParPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3KeyPar
+      PolicyDocument:
+        Statement:
+          - Sid: AllowStaticObjectDownload
+            Action: s3:GetObject
+            Effect: Allow
+            Resource: !Join ["", ["arn:aws:s3:::", !Ref "S3KeyPar", "/*"]]
+            Principal:
+              AWS: "*"
+          - Sid: PutObjectAccess
+            Action: s3:PutObject
+            Effect: Allow
+            Resource: !Join ["", ["arn:aws:s3:::", !Ref "S3KeyPar", "/*"]]
+            Principal:
+              AWS: "*"
+
 Outputs:
   WebsiteURL:
     Value: !GetAtt [S3WebApp, WebsiteURL]
     Description: URL for website hosted on S3
-  S3BucketSecureURL:
-    Value: !Join ["", ["https://", !GetAtt [S3WebApp, DomainName]]]
-    Description: Name of S3 bucket to hold website content
+  S3KeyParT:
+    Value: !GetAtt [S3KeyPar, WebsiteURL]
+    Description: URL for website hosted on S3

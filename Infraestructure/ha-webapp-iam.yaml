@@ -1,6 +1,6 @@
 ---
 Description: >
-  Amanda Souza
+  Amanda Souza / Udacity 2019
   CloudFormation file to allow EC2 instances to manage Web App S3.
 
 Parameters:
@@ -38,6 +38,13 @@ Resources:
         - Ref: "IAMRoleWebApp"
 
 Outputs:
-  IAMWebAppS3IP:
+  IAMRoleWebApp:
     Description: "Allow EC2 instances to manage Web App S3"
-    Value: !Ref "IAMWebAppS3IP"
+    Value: !Ref IAMWebAppS3IP
+    Export:
+      Name: !Sub ${WebAppEnv}-IAM-NAME
+  IAMRoleWebAppArn:
+    Description: Iam Instance Profile Arn
+    Value: !GetAtt IAMRoleWebApp.Arn
+    Export:
+      Name: !Sub ${WebAppEnv}-IAM-ARN

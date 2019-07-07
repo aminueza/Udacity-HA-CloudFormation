@@ -1,0 +1,181 @@
+---
+Description: >
+  Amanda Souza / Udacity 2019
+  CloudFormation file to access EC2 instances.
+
+Parameters:
+  WebAppEnv:
+    Description: An Enviroment name to tag resources
+    ConstraintDescription: Your env is invalid! Please, type an environment from the list
+    Type: String
+    AllowedValues:
+      - sandbox #env to developers create and test web apps
+      - staging #env to pre-live web apps
+      - production #env to add web app to production
+
+  SourceIP:
+    Description: Ip address to allow SSH access to the bastion host
+    Type: String
+    Default: 90.191.9.164/32
+
+  S3BastionSSH:
+    Description: Bucket which ssh key is hosted
+    Type: String
+    Default: udagram-key
+
+  KeyBastionSSH:
+    Description: KeyName to access bastion host
+    Type: "AWS::EC2::KeyPair::KeyName"
+    Default: udagram
+
+Resources:
+  BastionIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: "/"
+
+  BastionIamPolicies:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: fullAccess
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: "s3:*"
+            Resource: "*"
+      Roles:
+        - !Ref BastionIamRole
+
+  BastionIamInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref BastionIamRole
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG to access to bastion host
+      VpcId:
+        Fn::ImportValue: !Sub "${WebAppEnv}-VPCID"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: !Sub ${SourceIP}
+
+  BastionEC20:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - BastionSecurityGroup
+      - BastionIamInstanceProfile
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install unzip awscli -y
+          cd /home/ubuntu
+          aws s3 cp s3://${S3BastionSSH}/${KeyBastionSSH}.pem /home/ubuntu
+          chmod 400 ${KeyBastionSSH}.pem
+      IamInstanceProfile: !Ref BastionIamInstanceProfile
+      SecurityGroupIds:
+        - Ref: BastionSecurityGroup
+      SubnetId:
+        Fn::ImportValue: !Sub "${WebAppEnv}-PUB-NET0"
+      ImageId: ami-07b4f3c02c7f83d59
+      InstanceType: t3.small
+      KeyName: !Sub ${KeyBastionSSH}
+
+  EIP0:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain:
+        Fn::ImportValue: !Sub "${WebAppEnv}-VPCID"
+
+  EIPAssociation0:
+    Type: AWS::EC2::EIPAssociation
+    DependsOn:
+      - BastionEC20
+      - EIP0
+    Properties:
+      InstanceId:
+        Ref: BastionEC20
+      AllocationId:
+        Fn::GetAtt:
+          - EIP0
+          - AllocationId
+
+  BastionEC21:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - BastionSecurityGroup
+      - BastionIamInstanceProfile
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install unzip awscli -y
+          cd /home/ubuntu
+          aws s3 cp s3://${S3BastionSSH}/${KeyBastionSSH}.pem /home/ubuntu
+          chmod 400 ${KeyBastionSSH}.pem
+      IamInstanceProfile: !Ref BastionIamInstanceProfile
+      ImageId: ami-07b4f3c02c7f83d59
+      InstanceType: t3.small
+      KeyName: !Sub ${KeyBastionSSH}
+      SecurityGroupIds:
+        - Ref: BastionSecurityGroup
+      SubnetId:
+        Fn::ImportValue: !Sub "${WebAppEnv}-PUB-NET1"
+
+  EIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain:
+        Fn::ImportValue: !Sub "${WebAppEnv}-VPCID"
+
+  EIPAssociation1:
+    Type: AWS::EC2::EIPAssociation
+    DependsOn:
+      - BastionEC21
+      - EIP1
+    Properties:
+      InstanceId:
+        Ref: BastionEC21
+      AllocationId:
+        Fn::GetAtt:
+          - EIP1
+          - AllocationId
+Outputs:
+  CIDRBastion0:
+    Description: The CIDR of Bastion Host 0
+    Value: !Join ["", [!GetAtt BastionEC20.PrivateIp, !Sub "/32"]]
+    Export:
+      Name: !Sub ${WebAppEnv}-BASTION0-CIDR
+
+  CIDRBastion1:
+    Description: The CIDR to the Bastion Host 1
+    Value: !Join ["", [!GetAtt BastionEC21.PrivateIp, !Sub "/32"]]
+    Export:
+      Name: !Sub ${WebAppEnv}-BASTION1-CIDR
+
+  KeyBastionSSH:
+    Description: SSH Key Name
+    Value: !Sub ${KeyBastionSSH}
+    Export:
+      Name: !Sub ${WebAppEnv}-BASTION-KEYNAME

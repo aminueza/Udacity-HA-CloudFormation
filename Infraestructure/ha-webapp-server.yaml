@@ -1,6 +1,6 @@
 ---
 Description: >
-  Amanda Souza
+  Amanda Souza / Udacity 2019
   CloudFormation file to create EC2 instances.
 
 Parameters:
@@ -13,29 +13,65 @@ Parameters:
       - staging #env to pre-live web apps
       - production #env to add web app to production
 
-  InstanceType:
-    Description: Web App EC2 instance type
-    Type: String
-    Default: t3.small
-    ConstraintDescription: Your EC2 type is invalid! Please, enter a valid EC2 instance from the list.
-    AllowedValues:
-      - t2.small
-      - t2.medium
-      - t3.small
-      - t3.medium
-
-  Mappings:
-    WebAppRegion:
-      eu-central-1:
-        HVM64: ami-090f10efc254eaf55
-      us-east-1:
-        HVM64: ami-0c55b159cbfafe1f0
+Mappings:
+  WebAppRegion:
+    us-west-2:
+      HVM64: ami-07b4f3c02c7f83d59
 
 Resources:
+  WebAppLBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http traffic to LB
+      VpcId:
+        Fn::ImportValue: !Sub "${WebAppEnv}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: "Name"
+          Value: !Sub "${WebAppEnv}-WALBSG"
+
+  WebAppSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to ec2 and SHH access
+      VpcId:
+        Fn::ImportValue: !Sub "${WebAppEnv}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp:
+            Fn::ImportValue: !Sub ${WebAppEnv}-BASTION1-HOST-CIDR
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp:
+            Fn::ImportValue: !Sub ${WebAppEnv}-BASTION2-HOST-CIDR
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${WebAppEnv}-WASG
+
   WebAppLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      AvailabilityZone: !Sub ${WebAppAZOhio}a
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -44,13 +80,13 @@ Resources:
           apt-get install apache2 -y
           systemctl start apache2.service
           sudo rm /var/www/html/index.html
-          aws s3 cp s3://udacity-demo-1/udacity.zip /var/www/html
-          unzip -o /var/www/html/udacity.zip
-          sudo service apache2 restart
+          sudo aws s3 cp s3://udacity-udagram/udagram.zip /var/www/html
+          sudo unzip /var/www/html/udagram.zip -d /var/www/html
+          systemctl restart apache2.service
       IamInstanceProfile:
-        - Ref: ProfileWithRolesForOurApp
+        Fn::ImportValue: !Sub "${WebAppEnv}-IAM-NAME"
       SecurityGroups:
-        - Ref: WebServerSecGroup
+        - Ref: "WebAppSG"
       BlockDeviceMappings:
         - DeviceName: "/dev/sdk"
           Ebs:
@@ -58,11 +94,149 @@ Resources:
             DeleteOnTermination: true
             VolumeType: "gp2"
       ImageId: !FindInMap [WebAppRegion, !Ref "AWS::Region", HVM64]
-      InstanceType:
-        - Ref: InstanceType
-      KeyName: "WebAppAZ"
+      InstanceType: t3.small
+      KeyName:
+        Fn::ImportValue: !Sub ${WebAppEnv}-BASTION-HOST-SSH-KEY-NAME
+
+  WebAppASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: 4
+      MaxSize: 4
+      DesiredCapacity: 4
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub ${WebAppEnv}-PRV-NET0
+        - Fn::ImportValue: !Sub ${WebAppEnv}-PRV-NET1
+      LaunchConfigurationName: !Ref WebAppLaunchConfig
+      TargetGroupARNs:
+        - Ref: WebAppTG
+
+  #ScalingUp
+  WebAppScaleUp:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref WebAppASG
+      Cooldown: 300
+      ScalingAdjustment: 1
+
+  #ScalingDown
+  WebAppScaleDown:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref WebAppASG
+      Cooldown: 300
+      ScalingAdjustment: -1
+
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: udagram
+      Subnets:
+        - Fn::ImportValue: !Sub "${WebAppEnv}-PUB-NET0"
+        - Fn::ImportValue: !Sub "${WebAppEnv}-PUB-NET1"
+      SecurityGroups:
+        - Ref: WebAppLBSG
+
+  WebAppListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebAppTG
+      LoadBalancerArn: !Ref WebAppLB
+      Port: 80
+      Protocol: HTTP
+
+  WebAppLR:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref WebAppTG
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref WebAppListener
+      Priority: 1
+
+  WebAppTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "${WebAppEnv}-VPCID"
+
+  #CloudWatch alerts
+  WebAppCPUHighAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Properties:
+      AlarmName: "WebAppCPUUsageHigh"
+      AlarmDescription: "CPU usage is greater than 80% for 5 minutes"
+      MetricName: "CPUUtilization"
+      Namespace: "AWS/EC2"
+      Statistic: "Average"
+      Period: "300"
+      EvaluationPeriods: "1"
+      Threshold: "80"
+      ComparisonOperator: "GreaterThanThreshold"
+      AlarmActions:
+        - Ref: "WebAppScaleUp"
+      Dimensions:
+        - Name: "AutoScalingGroupName"
+          Value:
+            Ref: "WebAppASG"
+
+  #CloudWatch alerts
+  WebAppCPULowAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Properties:
+      AlarmName: "WebAppCPUUsageLow"
+      AlarmDescription: "CPU usage is less than 25% for 5 minutes"
+      MetricName: "CPUUtilization"
+      Namespace: "AWS/EC2"
+      Statistic: "Average"
+      Period: "300"
+      EvaluationPeriods: "1"
+      Threshold: "25"
+      ComparisonOperator: "GreaterThanThreshold"
+      AlarmActions:
+        - Ref: "WebAppScaleDown"
+      Dimensions:
+        - Name: "AutoScalingGroupName"
+          Value:
+            Ref: "WebAppASG"
 
 Outputs:
   Website:
     Description: The Public DNS for the EC2 Instance
-    Value: !Sub "http://${Ec2Instance.PublicDnsName}"
+    Value: !Join ["", ["http://", !GetAtt [WebAppLB, DNSName]]]
+
+  WebAppCPUHighAlarm:
+    Description: "CloudWatch to send alarms when EC2 CPU is High"
+    Value: !Ref "WebAppCPUHighAlarm"
+
+  WebAppCPULowAlarm:
+    Description: "CloudWatch to send alarms when EC2 CPU is Low"
+    Value: !Ref "WebAppCPULowAlarm"
+
+  WebAppASG:
+    Description: "Group ID of Auto Scaling Group Reference ID"
+    Value: !Ref "WebAppASG"
+
+  WebAppScaleUp:
+    Description: "Policy ID of Auto Scaling Up"
+    Value: !Ref "WebAppScaleUp"
+
+  WebAppScaleDown:
+    Description: "Policy ID of Auto Scaling Down"
+    Value: !Ref "WebAppScaleDown"

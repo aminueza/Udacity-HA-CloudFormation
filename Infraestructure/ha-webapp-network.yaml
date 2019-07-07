@@ -1,0 +1,272 @@
+---
+Description: >
+  Amanda Souza / Udacity 2019
+  CloudFormation file to create VPC.
+
+Parameters:
+  WebAppEnv:
+    Description: An Enviroment name to tag resources
+    ConstraintDescription: Your env is invalid! Please, type an environment from the list
+    Type: String
+    Default: sandbox
+    AllowedValues:
+      - sandbox #env to developers create and test web apps
+      - staging #env to pre-live web apps
+      - production #env to add web app to production
+
+Mappings:
+  DefaultConfig:
+    VPC:
+      CIDR: 10.0.0.0/16
+    Public0:
+      CIDR: 10.0.0.0/24
+    Public1:
+      CIDR: 10.0.1.0/24
+    Private0:
+      CIDR: 10.0.2.0/24
+    Private1:
+      CIDR: 10.0.3.0/24
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap
+        - DefaultConfig
+        - VPC
+        - CIDR
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Ref WebAppEnv
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Ref WebAppEnv
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet0:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !FindInMap
+        - DefaultConfig
+        - Public0
+        - CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Sub ${WebAppEnv} Public Subnet (AZ0)
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !FindInMap
+        - DefaultConfig
+        - Public1
+        - CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Sub ${WebAppEnv} Public Subnet (AZ1)
+
+  PrivateSubnet0:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !FindInMap
+        - DefaultConfig
+        - Private0
+        - CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Network
+          Value: Private
+        - Key: Name
+          Value: !Sub ${WebAppEnv} Private Subnet (AZ0)
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !FindInMap
+        - DefaultConfig
+        - Private1
+        - CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Network
+          Value: Private
+        - Key: Name
+          Value: !Sub ${WebAppEnv} Private Subnet (AZ1)
+
+  ElasticIP0:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+
+  ElasticIP1:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway0:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP0.AllocationId
+      SubnetId: !Ref PublicSubnet0
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ElasticIP1.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Network
+          Value: Public
+        - Key: Name
+          Value: !Sub ${WebAppEnv}-public-route-table
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRTAssociation0:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet0
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRTAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable0:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Network
+          Value: Private
+        - Key: Name
+          Value: !Sub ${WebAppEnv}-private-route-table-0
+
+  DefaultPrivateRoute0:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable0
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway0
+
+  PrivateSubnetRTAssociation0:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet0
+      RouteTableId: !Ref PrivateRouteTable0
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Network
+          Value: Private
+        - Key: Name
+          Value: !Sub ${WebAppEnv}-private-route-table-1
+
+  DeafultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnetRTAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+Outputs:
+  VPCID:
+    Description: The VPCId of VPC
+    Value: !Ref VPC
+    Export:
+      Name: !Sub ${WebAppEnv}-VPCID
+
+  PublicSubnetIDs:
+    Description: The subnetIds of public subnets
+    Value: !Join [",", [!Ref PublicSubnet0, !Ref PublicSubnet1]]
+    Export:
+      Name: !Sub ${WebAppEnv}-PUB-NETS
+
+  PrivateSubnetIDs:
+    Description: The subnetIds of private subnets
+    Value: !Join [",", [!Ref PrivateSubnet0, !Ref PrivateSubnet1]]
+    Export:
+      Name: !Sub ${WebAppEnv}-PRV-NETS
+
+  PublicSubnetID0:
+    Description: The subnetId of public subnet 0 of (AZ0)
+    Value: !Ref PublicSubnet0
+    Export:
+      Name: !Sub ${WebAppEnv}-PUB-NET0
+
+  PublicSubnetID1:
+    Description: The subnetId of PublicSubnet1 of (AZ1)
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub ${WebAppEnv}-PUB-NET1
+
+  PrivateSubnetID0:
+    Description: The subnetId of PrivateSubnet0 of (AZ0)
+    Value: !Ref PrivateSubnet0
+    Export:
+      Name: !Sub ${WebAppEnv}-PRV-NET0
+
+  PrivateSubnetID1:
+    Description: SubnetId of private subnet 1 of (AZ1)
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub ${WebAppEnv}-PRV-NET1
+
+  SecurityGroupDefault:
+    Description: The ID of DefaultSecurityGroup
+    Value: !GetAtt VPC.DefaultSecurityGroup
+    Export:
+      Name: !Sub ${WebAppEnv}-SG
