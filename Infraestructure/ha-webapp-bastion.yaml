@@ -1,7 +1,7 @@
 ---
 Description: >
   Amanda Souza / Udacity 2019
-  CloudFormation file to access EC2 instances.
+  CloudFormation file to create bastion access.
 
 Parameters:
   WebAppEnv:
