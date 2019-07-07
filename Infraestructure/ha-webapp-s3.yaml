@@ -42,6 +42,9 @@ Resources:
     Properties:
       BucketName: udagram-key
       AccessControl: Private
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
     DeletionPolicy: Retain
 
   S3KeyParPolicy:
@@ -62,11 +65,53 @@ Resources:
             Resource: !Join ["", ["arn:aws:s3:::", !Ref "S3KeyPar", "/*"]]
             Principal:
               AWS: "*"
+  S3Logs:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketName: udagram-logs
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+    DeletionPolicy: Retain
+
+  S3LogsPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Logs
+      PolicyDocument:
+        Statement:
+          - Sid: AllowStaticObjectDownload
+            Action: s3:GetObject
+            Effect: Allow
+            Resource: !Join ["", ["arn:aws:s3:::", !Ref "S3Logs", "/*"]]
+            Principal:
+              AWS: "*"
+          - Sid: PutObjectAccess
+            Action: s3:PutObject
+            Effect: Allow
+            Resource: !Join ["", ["arn:aws:s3:::", !Ref "S3Logs", "/*"]]
+            Principal:
+              AWS: "*"
 
 Outputs:
   WebsiteURL:
     Value: !GetAtt [S3WebApp, WebsiteURL]
     Description: URL for website hosted on S3
+  WebsiteSecureURL:
+    Value: !Join ["", ["https://", !GetAtt [S3WebApp, DomainName]]]
+    Description: Secure URL for website hosted on S3
   S3KeyParT:
     Value: !GetAtt [S3KeyPar, WebsiteURL]
-    Description: URL for website hosted on S3
+    Description: URL for key hosted on S3
+  S3KeyParTSecureURL:
+    Value: !Join ["", ["https://", !GetAtt [S3KeyPar, DomainName]]]
+    Description: Secure URL for key hosted on S3
+  S3Logs:
+    Value: !GetAtt [S3Logs, DomainName]
+    Description: URL for logs hosted on S3
+    Export:
+      Name: !Sub ${WebAppEnv}-S3-LOGS
+  S3LogsURL:
+    Value: !Join ["", ["https://", !GetAtt [S3Logs, DomainName]]]
+    Description: Secure URL for logs hosted on S3

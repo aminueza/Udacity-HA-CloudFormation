@@ -1,0 +1,174 @@
+---
+Description: >
+  Amanda Souza / Udacity 2019
+  CloudFormation file to create EC2 instances.
+
+Parameters:
+  WebAppEnv:
+    Description: An Enviroment name to tag resources
+    ConstraintDescription: Your env is invalid! Please, type an environment from the list
+    Type: String
+    AllowedValues:
+      - sandbox #env to developers create and test web apps
+      - staging #env to pre-live web apps
+      - production #env to add web app to production
+  WebAppACL:
+    Description: Waf Rules
+    Type: String
+    Default: UdagramACL
+
+Resources:
+  UdagramACL:
+    Properties:
+      Name: !Ref WebAppACL
+      DefaultAction:
+        Type: ALLOW
+      MetricName: !Ref WebAppACL
+      Rules:
+        - Action:
+            Type: BLOCK
+          Priority: 1
+          RuleId: !Ref ManualIPBlockRule
+        - Action:
+            Type: COUNT
+          Priority: 2
+          RuleId: !Ref SizeMatchRule
+        - Action:
+            Type: BLOCK
+          Priority: 3
+          RuleId: !Ref SqliRule
+        - Action:
+            Type: BLOCK
+          Priority: 4
+          RuleId: !Ref XssRule
+    Type: "AWS::WAF::WebACL"
+  SqliRule:
+    Properties:
+      Name: !Join
+        - ""
+        - - !Ref WebAppACL
+          - SqliRule
+      MetricName: !Join
+        - ""
+        - - !Ref WebAppACL
+          - SqliRule
+      Predicates:
+        - DataId: !Ref SqliMatchSet
+          Negated: false
+          Type: SqlInjectionMatch
+    Type: "AWS::WAF::Rule"
+  XssRule:
+    Properties:
+      Name: !Join
+        - ""
+        - - !Ref WebAppACL
+          - XssRule
+      MetricName: !Join
+        - ""
+        - - !Ref WebAppACL
+          - XssRule
+      Predicates:
+        - DataId: !Ref XssMatchSet
+          Negated: false
+          Type: XssMatch
+    Type: "AWS::WAF::Rule"
+  SizeMatchRule:
+    Properties:
+      Name: !Join
+        - ""
+        - - !Ref WebAppACL
+          - LargeBodyMatchRule
+      MetricName: !Join
+        - ""
+        - - !Ref WebAppACL
+          - DetectLargeBody
+      Predicates:
+        - DataId: !Ref SizeMatchSet
+          Negated: false
+          Type: SizeConstraint
+    Type: "AWS::WAF::Rule"
+  ManualIPBlockRule:
+    Properties:
+      Name: !Join
+        - ""
+        - - !Ref WebAppACL
+          - ManualIPBlockRule
+      MetricName: !Join
+        - ""
+        - - !Ref WebAppACL
+          - ManualIPBlockRule
+      Predicates:
+        - DataId: !Ref WAFManualIPBlockSet
+          Negated: false
+          Type: IPMatch
+    Type: "AWS::WAF::Rule"
+  WAFManualIPBlockSet:
+    Properties:
+      Name: Manual IP Block Set
+    Type: "AWS::WAF::IPSet"
+  SizeMatchSet:
+    Properties:
+      Name: !Join
+        - ""
+        - - !Ref WebAppACL
+          - LargeBodyMatch
+      SizeConstraints:
+        - FieldToMatch:
+            Type: BODY
+          ComparisonOperator: GT
+          Size: "8192"
+          TextTransformation: NONE
+    Type: "AWS::WAF::SizeConstraintSet"
+  SqliMatchSet:
+    Properties:
+      Name: !Join
+        - ""
+        - - !Ref WebAppACL
+          - SqliMatch
+      SqlInjectionMatchTuples:
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: URI
+          TextTransformation: URL_DECODE
+    Type: "AWS::WAF::SqlInjectionMatchSet"
+  XssMatchSet:
+    Properties:
+      Name: !Join
+        - ""
+        - - !Ref WebAppACL
+          - XssMatch
+      XssMatchTuples:
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: QUERY_STRING
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: URL_DECODE
+        - FieldToMatch:
+            Type: BODY
+          TextTransformation: HTML_ENTITY_DECODE
+        - FieldToMatch:
+            Type: URI
+          TextTransformation: URL_DECODE
+    Type: "AWS::WAF::XssMatchSet"
+
+Outputs:
+  UdagramACL:
+    Description: The Waf rule name
+    Value: !Ref UdagramACL
+    Export:
+      Name: !Sub ${WebAppEnv}-WEBACL

@@ -54,12 +54,12 @@ Resources:
           FromPort: 22
           ToPort: 22
           CidrIp:
-            Fn::ImportValue: !Sub ${WebAppEnv}-BASTION1-HOST-CIDR
+            Fn::ImportValue: !Sub ${WebAppEnv}-BASTION0-CIDR
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp:
-            Fn::ImportValue: !Sub ${WebAppEnv}-BASTION2-HOST-CIDR
+            Fn::ImportValue: !Sub ${WebAppEnv}-BASTION1-CIDR
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 0
@@ -96,7 +96,7 @@ Resources:
       ImageId: !FindInMap [WebAppRegion, !Ref "AWS::Region", HVM64]
       InstanceType: t3.small
       KeyName:
-        Fn::ImportValue: !Sub ${WebAppEnv}-BASTION-HOST-SSH-KEY-NAME
+        Fn::ImportValue: !Sub ${WebAppEnv}-BASTION-KEYNAME
 
   WebAppASG:
     Type: AWS::AutoScaling::AutoScalingGroup
@@ -110,24 +110,6 @@ Resources:
       LaunchConfigurationName: !Ref WebAppLaunchConfig
       TargetGroupARNs:
         - Ref: WebAppTG
-
-  #ScalingUp
-  WebAppScaleUp:
-    Type: AWS::AutoScaling::ScalingPolicy
-    Properties:
-      AdjustmentType: ChangeInCapacity
-      AutoScalingGroupName: !Ref WebAppASG
-      Cooldown: 300
-      ScalingAdjustment: 1
-
-  #ScalingDown
-  WebAppScaleDown:
-    Type: AWS::AutoScaling::ScalingPolicy
-    Properties:
-      AdjustmentType: ChangeInCapacity
-      AutoScalingGroupName: !Ref WebAppASG
-      Cooldown: 300
-      ScalingAdjustment: -1
 
   WebAppLB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -176,6 +158,24 @@ Resources:
         Fn::ImportValue:
           Fn::Sub: "${WebAppEnv}-VPCID"
 
+  #ScalingUp
+  WebAppScaleUp:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref WebAppASG
+      Cooldown: 300
+      ScalingAdjustment: 1
+
+  #ScalingDown
+  WebAppScaleDown:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref WebAppASG
+      Cooldown: 300
+      ScalingAdjustment: -1
+
   #CloudWatch alerts
   WebAppCPUHighAlarm:
     Type: "AWS::CloudWatch::Alarm"
@@ -215,6 +215,56 @@ Resources:
         - Name: "AutoScalingGroupName"
           Value:
             Ref: "WebAppASG"
+
+  #CloudFront and WAF Protection
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt [WebAppLB, DNSName]
+            Id: !GetAtt [WebAppLB, DNSName]
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+        Enabled: "true"
+        CustomErrorResponses:
+          - ErrorCachingMinTTL: 0
+            ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: "/error.html"
+          - ErrorCachingMinTTL: 0
+            ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: "/error.html"
+        DefaultRootObject: index.html
+        Logging:
+          IncludeCookies: "false"
+          Bucket:
+            Fn::Join:
+              - ""
+              - - Fn::ImportValue: !Sub ${WebAppEnv}-S3-LOGS
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+            Locations: []
+        DefaultCacheBehavior:
+          AllowedMethods: [HEAD, GET]
+          MinTTL: "0"
+          MaxTTL: "0"
+          DefaultTTL: "0"
+          TargetOriginId: !GetAtt [WebAppLB, DNSName]
+          SmoothStreaming: "false"
+          ForwardedValues:
+            QueryString: "true"
+          ViewerProtocolPolicy: allow-all
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: "true"
+        WebACLId:
+          Fn::Join:
+            - ""
+            - - Fn::ImportValue: !Sub ${WebAppEnv}-WEBACL
 
 Outputs:
   Website:
