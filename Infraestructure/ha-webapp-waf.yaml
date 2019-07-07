@@ -1,4 +1,5 @@
 ---
+#Template based on https://github.com/jhogenlids/ITOps/blob/master/AWS/Cloudformation/Templates/WAF/CommonAttackProtection.yml
 Description: >
   Amanda Souza / Udacity 2019
   CloudFormation file to create Waf rules.
