@@ -95,8 +95,6 @@ Resources:
             VolumeType: "gp2"
       ImageId: !FindInMap [WebAppRegion, !Ref "AWS::Region", HVM64]
       InstanceType: t3.small
-      KeyName:
-        Fn::ImportValue: !Sub ${WebAppEnv}-BASTION-KEYNAME
 
   WebAppASG:
     Type: AWS::AutoScaling::AutoScalingGroup
